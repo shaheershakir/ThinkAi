@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_community.embeddings import HuggingFaceEmbeddings
 
 
 load_dotenv()
@@ -25,7 +26,8 @@ def get_vectorstore_from_url(url):
     document_chunks = text_splitter.split_documents(document)
 
     # create a vectorstore from the chunks
-    vector_store = Chroma.from_documents(document_chunks, OpenAIEmbeddings())
+    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+    vector_store = Chroma.from_documents(document_chunks, embeddings)
 
     return vector_store
 
