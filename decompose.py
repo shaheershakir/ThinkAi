@@ -26,6 +26,14 @@ st.subheader(
     "Load your PDF, ask questions, and receive answers directly from the document."
 )
 
+with st.sidebar:
+    uploaded_file = st.file_uploader(
+        "Upload some PDFs and ask questions.",
+        accept_multiple_files=True,
+    )
+
+
+import bs4
 from langchain_community.document_loaders import WebBaseLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
@@ -41,6 +49,7 @@ def load_document(file_path):
     if file_path:
         loader = PyPDFLoader(file_path)
         docs = loader.load_and_split()  # Load and split into pages directly
+        docs = loader.load()
     else:
         raise ValueError("'file_path'must be provided.")
     return docs
@@ -97,69 +106,47 @@ def answer_question(retriever, question, q_a_pairs=""):
     return rag_chain.invoke({"question": question, "q_a_pairs": q_a_pairs})
 
 
-def get_response(retriever, question, q_a_pairs=""):
-    questions = generate_sub_questions(question)
-    answers = []
-    for q in questions:
-        answer = answer_question(retriever, q, q_a_pairs)
-        q_a_pair = format_qa_pair(q, answer)
-        q_a_pairs = q_a_pairs + "\n---\n" + q_a_pair
-        answers.append(answer)
-
-    final_answer = f"**To answer your question: {question}**\n\n"
-    for i, answer in enumerate(answers):
-        final_answer += f"**Sub-question {i+1}:** {questions[i]}\n{answer}\n\n"
-
-    return final_answer
-
-
 # Main function
 def main():
     with st.sidebar:
-        uploaded_files = st.file_uploader(
-            "", type=(["pdf"]), accept_multiple_files=True
-        )
-        process_button = st.button("Process Document(s)")
+        uploaded_file = st.file_uploader("", type=(["pdf"]))
+        url = st.text_input("Enter a URL (leave blank if uploading PDF):")
 
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = [
-            AIMessage(content="Hello, I am a bot. How can I help you?")
-        ]
-
-    if process_button and (uploaded_files):
-        all_docs = []
-        if uploaded_files:
-            for uploaded_file in uploaded_files:
-                temp_dir = tempfile.TemporaryDirectory()
-                temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
-                with open(temp_file_path, "wb") as temp_file:
-                    temp_file.write(uploaded_file.read())
-                docs = load_document(file_path=temp_file_path)
-                all_docs.extend(docs)
-
-            splits = split_documents(all_docs)
-            st.session_state.vector_store = create_vectorstore(splits)
-
-            st.success("Document(s) processed! You can now ask questions.")
-
-    if "vector_store" in st.session_state:
-        user_query = st.chat_input("Type your message here...")
-        if user_query is not None and user_query != "":
-            response = get_response(st.session_state.vector_store, user_query)
-            st.session_state.chat_history.append(HumanMessage(content=user_query))
-            st.session_state.chat_history.append(AIMessage(content=response))
-            source = st.session_state.vector_store.get_relevant_documents(user_query)
-            st.write(source)
-
-        for message in st.session_state.chat_history:
-            if isinstance(message, AIMessage):
-                with st.chat_message("AI"):
-                    st.write(message.content)
-            elif isinstance(message, HumanMessage):
-                with st.chat_message("Human"):
-                    st.write(message.content)
+    if uploaded_file:
+        # Handle PDF upload
+        temp_dir = tempfile.TemporaryDirectory()
+        temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
+        with open(temp_file_path, "wb") as temp_file:
+            temp_file.write(uploaded_file.read())
+        docs = load_document(file_path=temp_file_path)
+    elif url:
+        # Handle URL input
+        docs = load_document(url=url)
     else:
-        st.warning("Please upload PDFs or enter a URL and click 'Process Document(s)'.")
+        st.warning("Please upload a PDF or enter a URL.")
+        return
+
+    splits = split_documents(docs)
+    retriever = create_vectorstore(splits)
+
+    st.title("Chat with your Document")
+    question = st.text_input("Enter your question:")
+
+    if question:
+        questions = generate_sub_questions(question)
+        q_a_pairs = ""
+        answers = []
+        for q in questions:
+            answer = answer_question(retriever, q, q_a_pairs)
+            q_a_pair = format_qa_pair(q, answer)
+            q_a_pairs = q_a_pairs + "\n---\n" + q_a_pair
+            answers.append(answer)
+
+        final_answer = f"**To answer your question: {question}**\n\n"
+        for i, answer in enumerate(answers):
+            final_answer += f"**Sub-question {i+1}:** {questions[i]}\n{answer}\n\n"
+
+        st.write(final_answer)
 
 
 if __name__ == "__main__":

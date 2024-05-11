@@ -41,6 +41,7 @@ def load_document(file_path):
     if file_path:
         loader = PyPDFLoader(file_path)
         docs = loader.load_and_split()  # Load and split into pages directly
+        docs = loader.load()
     else:
         raise ValueError("'file_path'must be provided.")
     return docs
@@ -127,15 +128,16 @@ def main():
         ]
 
     if process_button and (uploaded_files):
-        all_docs = []
-        if uploaded_files:
-            for uploaded_file in uploaded_files:
-                temp_dir = tempfile.TemporaryDirectory()
-                temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
-                with open(temp_file_path, "wb") as temp_file:
-                    temp_file.write(uploaded_file.read())
-                docs = load_document(file_path=temp_file_path)
-                all_docs.extend(docs)
+        if "vector_store" not in st.session_state:
+            all_docs = []
+            if uploaded_files:
+                for uploaded_file in uploaded_files:
+                    temp_dir = tempfile.TemporaryDirectory()
+                    temp_file_path = os.path.join(temp_dir.name, uploaded_file.name)
+                    with open(temp_file_path, "wb") as temp_file:
+                        temp_file.write(uploaded_file.read())
+                    docs = load_document(file_path=temp_file_path)
+                    all_docs.extend(docs)
 
             splits = split_documents(all_docs)
             st.session_state.vector_store = create_vectorstore(splits)
@@ -148,8 +150,6 @@ def main():
             response = get_response(st.session_state.vector_store, user_query)
             st.session_state.chat_history.append(HumanMessage(content=user_query))
             st.session_state.chat_history.append(AIMessage(content=response))
-            source = st.session_state.vector_store.get_relevant_documents(user_query)
-            st.write(source)
 
         for message in st.session_state.chat_history:
             if isinstance(message, AIMessage):
