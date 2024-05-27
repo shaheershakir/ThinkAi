@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import google.generativeai as genai
 from pathlib import Path
@@ -46,25 +48,30 @@ def input_image_setup(uploaded_files, selected_image_index):
 
     selected_file = uploaded_files[selected_image_index]
 
+    # Read the image data only once
+    image_data = selected_file.read()
+
     temp_path = Path(f"temp_image_{selected_image_index}.jpg")
-    temp_path.write_bytes(selected_file.read())
+    temp_path.write_bytes(image_data)
 
-    image_parts = [{"mime_type": "image/jpeg", "data": temp_path.read_bytes()}]
+    image_parts = [{"mime_type": "image/jpeg", "data": image_data}]
 
-    return image_parts, temp_path
+    return image_parts, temp_path, image_data
 
 
 def generate_gemini_response(
     input_prompt, uploaded_files, selected_image_index, question_prompt
 ):
-    image_prompt, temp_path = input_image_setup(uploaded_files, selected_image_index)
+    image_prompt, temp_path, image_data = input_image_setup(
+        uploaded_files, selected_image_index
+    )
     prompt_parts = [image_prompt[0], question_prompt]
     response = model.generate_content(prompt_parts)
 
     # Remove temporary file after generating the response
     temp_path.unlink()
 
-    return response.text
+    return response.text, image_data
 
 
 input_prompt = """
@@ -75,7 +82,7 @@ input_prompt = """
 
 
 def main():
-    st.title("Gemini Pro Vision Streamlit App")
+    st.title("Image Chatbot")
 
     # File Upload
     st.sidebar.header("Upload Image or Images")
@@ -99,12 +106,16 @@ def main():
 
     if st.button("Generate Response"):
         try:
-            response_text = generate_gemini_response(
+            response_text, image_data = generate_gemini_response(
                 input_prompt,
                 uploaded_files,
                 file_names.index(selected_image_index),
                 question_prompt,
             )
+
+            # Display the selected image
+            st.subheader("Selected Image:")
+            st.image(image_data, use_column_width=True)
 
             # Display conversation history and select the chat
             st.subheader("Generated Response:")

@@ -2,7 +2,7 @@ import os
 import utils
 import streamlit as st
 from streaming import StreamHandler
-
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
@@ -23,7 +23,7 @@ load_dotenv()
 
 st.set_page_config(page_title="ThinkAI", page_icon="📄")
 st.subheader(
-    "Load your PDF, ask questions, and receive answers directly from the document."
+    "Load your Document, ask questions, and receive answers directly from the document."
 )
 
 from langchain_community.document_loaders import WebBaseLoader
@@ -56,7 +56,7 @@ def split_documents(docs):
 
 # Create vectorstore
 def create_vectorstore(splits):
-    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vectorstore = Chroma.from_documents(documents=splits, embedding=embeddings)
     return vectorstore.as_retriever()
 
@@ -81,7 +81,7 @@ def format_qa_pair(question, answer):
 
 # Answer question using RAG
 def answer_question(retriever, question, q_a_pairs=""):
-    template = """Here is the question you need to answer:\n --- \n {question} \n --- \nHere is any available background question + answer pairs:\n --- \n {q_a_pairs} \n --- \nHere is additional context relevant to the question: \n --- \n {context} \n --- \nUse the above context and any background question + answer pairs to answer the question: \n {question}"""
+    template = """Here is the question you need to answer:\n --- \n {question} \n --- \nHere is any available background question + answer pairs:\n --- \n {q_a_pairs} \n --- \nHere is additional context relevant to the question: \n --- \n {context} \n --- \nUse the above context and any background question + answer pairs to answer the question: \n {question} \n if the answer to the question is not in context say the answer is not in context"""
     decomposition_prompt = ChatPromptTemplate.from_template(template)
     llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
     rag_chain = (
@@ -115,6 +115,7 @@ def get_response(retriever, question, q_a_pairs=""):
 
 # Main function
 def main():
+    source = None
     with st.sidebar:
         uploaded_files = st.file_uploader(
             "", type=(["pdf"]), accept_multiple_files=True
@@ -123,7 +124,7 @@ def main():
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = [
-            AIMessage(content="Hello, I am a bot. How can I help you?")
+            AIMessage(content="Hello, I am a Think Ai. How can I help you?")
         ]
 
     if process_button and (uploaded_files):
@@ -149,12 +150,14 @@ def main():
             st.session_state.chat_history.append(HumanMessage(content=user_query))
             st.session_state.chat_history.append(AIMessage(content=response))
             source = st.session_state.vector_store.get_relevant_documents(user_query)
-            st.write(source)
+            # st.write(source)
 
         for message in st.session_state.chat_history:
             if isinstance(message, AIMessage):
                 with st.chat_message("AI"):
                     st.write(message.content)
+                    if source != None:
+                        st.write(source)
             elif isinstance(message, HumanMessage):
                 with st.chat_message("Human"):
                     st.write(message.content)

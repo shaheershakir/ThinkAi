@@ -11,6 +11,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 
 load_dotenv()
@@ -26,7 +27,7 @@ def get_vectorstore_from_url(url):
     document_chunks = text_splitter.split_documents(document)
 
     # create a vectorstore from the chunks
-    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vector_store = Chroma.from_documents(document_chunks, embeddings)
 
     return vector_store
@@ -100,7 +101,7 @@ else:
     # session state
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = [
-            AIMessage(content="Hello, I am a bot. How can I help you?"),
+            AIMessage(content="Hello, I am a Think Ai. How can I help you?"),
         ]
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = get_vectorstore_from_url(website_url)

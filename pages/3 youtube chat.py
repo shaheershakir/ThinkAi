@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 from langchain_community.document_loaders import YoutubeLoader
 import datetime
@@ -26,19 +28,22 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 import time
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+import requests
+from io import BytesIO
 
 load_dotenv()
 
 
 def get_transcript(youtube_url):
     try:
-        youtube_url = youtube_url.split("=")[1]
-        loader = YoutubeLoader(youtube_url)
+        video_id = youtube_url.split("=")[1]
+        loader = YoutubeLoader(video_id)
         document = loader.load()
     except NoTranscriptFound:
         raise Exception("No transcript found for this video")
 
-    return document
+    return document, video_id
 
 
 def vectorize_text(document):
@@ -47,7 +52,7 @@ def vectorize_text(document):
     document_chunks = text_splitter.split_documents(document)
 
     # create a vectorstore from the chunks
-    embeddings = HuggingFaceEmbeddings(model_name="BAAI/bge-small-en-v1.5")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     vector_store = Chroma.from_documents(document_chunks, embeddings)
 
     return vector_store
@@ -75,7 +80,6 @@ def get_context_retriever_chain(vector_store):
 
 
 def get_conversational_rag_chain(retriever_chain):
-
     llm = ChatOpenAI()
 
     prompt = ChatPromptTemplate.from_messages(
@@ -102,8 +106,7 @@ def get_response(user_input):
         {"chat_history": st.session_state.chat_history, "input": user_input}
     )
 
-    return response["answer"]
-
+    return response["answer"] 
 
 st.title("YouTube video summarizer")
 with st.sidebar:
@@ -117,8 +120,8 @@ with st.sidebar:
                 status_text.text("Getting video...")
                 progress.progress(25)
 
-                # Getting both the transcript
-                transcript = get_transcript(link)
+                # Getting both the transcript and video ID
+                transcript, video_id = get_transcript(link)
 
                 status_text.text(f"Watching video...")
                 progress.progress(50)
@@ -130,6 +133,7 @@ with st.sidebar:
                 # Vectorizing the text
                 vector_store = vectorize_text(transcript)
                 st.session_state.vector_store = vector_store
+                st.session_state.video_id = video_id  # Store video ID
                 status_text.text("Complete:")
                 progress.progress(100)
 
@@ -146,7 +150,7 @@ with st.sidebar:
 # chat logic
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = [
-        AIMessage(content="Hello, I am a bot. How can I help you?"),
+        AIMessage(content="Hello, I am a Think Ai. How can I help you?"),
     ]
 if "vector_store" not in st.session_state:
     st.session_state.vector_store = Chroma(
@@ -156,9 +160,22 @@ if "vector_store" not in st.session_state:
 # user input
 user_query = st.chat_input("Type your message here...")
 if user_query is not None and user_query != "":
-    response = get_response(user_query)
+    response_text = get_response(user_query) 
+
+    # Display YouTube preview image 
+    if "video_id" in st.session_state:
+        with st.chat_message("AI"):
+            try:
+                thumbnail_url = f"https://img.youtube.com/vi/{st.session_state.video_id}/0.jpg"
+                print("Thumbnail URL:", thumbnail_url)  # Debugging
+                response = requests.get(thumbnail_url)
+                image = BytesIO(response.content)
+                st.image(image, caption="YouTube Thumbnail", use_column_width=True)
+            except Exception as e:
+                st.write(f"Error displaying image: {e}")
+
     st.session_state.chat_history.append(HumanMessage(content=user_query))
-    st.session_state.chat_history.append(AIMessage(content=response))
+    st.session_state.chat_history.append(AIMessage(content=response_text))
 
 # conversation
 for message in st.session_state.chat_history:
@@ -167,4 +184,4 @@ for message in st.session_state.chat_history:
             st.write(message.content)
     elif isinstance(message, HumanMessage):
         with st.chat_message("Human"):
-            st.write(message.content)
+            st.write(message.content) 
